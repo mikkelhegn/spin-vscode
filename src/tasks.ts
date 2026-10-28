@@ -5,7 +5,7 @@ import * as installer from './installer';
 import { warnInstallNotEnsured } from './logger';
 import { cantHappen } from './utils/never';
 
-const TASK_SOURCE = "spin";
+export const TASK_SOURCE = "spin";
 
 export function provider(): vscode.TaskProvider<vscode.Task> {
     return new SpinTaskProvider();
@@ -21,13 +21,14 @@ class SpinTaskProvider implements vscode.TaskProvider<vscode.Task> {
     }
 }
 
-type SpinTaskCommand = 'build' | 'up' | 'deploy';
+type SpinTaskCommand = 'build' | 'up' | 'deploy' | 'dashboard';
 
 function provideTasks(): vscode.Task[] {
     const taskSpecs: ReadonlyArray<SpinTaskSpecification> = [
         { name: "build", defn: { type: "spin", command: "build", options: [] }, group: vscode.TaskGroup.Build },
         { name: "up", defn: { type: "spin", command: "up", options: [] }, group: vscode.TaskGroup.Test },
         { name: "deploy", defn: { type: "spin", command: "deploy", options: [] }, group: vscode.TaskGroup.Test },
+        { name: "dashboard", defn: { type: "spin", command: "dashboard", options: ["--no-open"] }, group: vscode.TaskGroup.Test },
     ];
 
     const tasks = taskSpecs.map(({name, defn, group}) => {
@@ -67,6 +68,7 @@ async function resolveExec(command: SpinTaskCommand, options: ReadonlyArray<stri
     switch (command) {
         case 'build':
         case 'up':
+        case 'dashboard':
             return await spinCommand([command, ...options]);
         case 'deploy':
             return new vscode.ProcessExecution('${command:spin.deploy}');
@@ -75,7 +77,7 @@ async function resolveExec(command: SpinTaskCommand, options: ReadonlyArray<stri
     }
 }
 
-async function spinCommand(args: string[]): Promise<vscode.ShellExecution> {
+export async function spinCommand(args: string[]): Promise<vscode.ShellExecution> {
     const spinPath = await installer.ensureSpinInstalled();
     if (isOk(spinPath)) {
         return new vscode.ShellExecution(spinPath.value, args, undefined);
@@ -103,7 +105,7 @@ function isSpin(defn: vscode.TaskDefinition): defn is SpinTaskDefinition {
 }
 
 function isSpinTaskCommand(command: unknown): command is SpinTaskCommand {
-    return command === 'build' || command === 'up' || command === 'deploy';
+    return command === 'build' || command === 'up' || command === 'deploy' || command === 'dashboard';
 }
 
 type Any = { [key: string]: unknown };

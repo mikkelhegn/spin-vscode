@@ -3,6 +3,7 @@ import * as shelljs from 'shelljs';
 import * as spawnrx from 'spawn-rx';
 import * as vscode from 'vscode';
 
+import * as config from '../config';
 import { err, Errorable, ok } from '../errorable';
 
 export enum Platform {
@@ -98,10 +99,23 @@ function fileUri(filePath: string): vscode.Uri {
 function execOpts(): ExecOpts {
     const opts = {
         cwd: vscode.workspace.rootPath,
-        env: process.env,
+        env: baseEnv(),
         async: true
     };
     return opts;
+}
+
+// Base environment for every `spin` invocation. Modern Spin CLI versions require
+// SPIN_DEPLOY_PLUGIN to be set (or a plugin-specific login/deploy command used) when
+// more than one deployment-capable plugin (cloud, aka, ...) is installed; surface the
+// configured default here rather than in every call site.
+function baseEnv(): NodeJS.ProcessEnv {
+    const env = { ...process.env };
+    const deployPlugin = config.deployPlugin();
+    if (deployPlugin) {
+        env.SPIN_DEPLOY_PLUGIN = deployPlugin;
+    }
+    return env;
 }
 
 export interface ProcessErrLine {
@@ -124,7 +138,7 @@ export interface RunningProcess {
 export function invokeErrFeed(program: string, args: string[], bonusEnv: { [key: string]: string }, token: vscode.CancellationToken): RunningProcess {
     const subject = new rx.Subject<ProcessEvent>();
 
-    const env = { ...process.env, ...bonusEnv };
+    const env = { ...baseEnv(), ...bonusEnv };
     const opts = {
         split: true,
         cwd: vscode.workspace.rootPath,
