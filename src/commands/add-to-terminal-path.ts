@@ -1,4 +1,4 @@
-import path = require('path');
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { isErr } from '../errorable';
 import { ensureSpinInstalled } from '../installer';

@@ -1,5 +1,5 @@
 import * as path from 'path';
-import xdg = require('xdg-portable/cjs');
+import * as xdg from 'xdg-portable/cjs';
 
 const EXTENSION_FOLDER = "spin-vscode";
 

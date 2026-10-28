@@ -32,7 +32,7 @@ jobs:
     - name: Prepare environment
       run: |
         npm install -g typescript
-        npm install -g vsce
+        npm install -g @vscode/vsce
     - name: Build
       run: npm run compile
     - name: Smoke test (Linux)

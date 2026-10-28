@@ -1,11 +1,11 @@
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import got from 'got';
-import extract = require('extract-zip');
-import mkdirp = require('mkdirp');
+import { mkdirp } from 'mkdirp';
 import * as path from 'path';
 import * as tar from 'tar';
 import * as tmp from 'tmp';
+import * as yauzl from 'yauzl';
 import * as config from './config';
 import { Errorable, err, ok, isErr, isOk } from "./errorable";
 import * as layout from './layout';
@@ -189,12 +189,52 @@ async function unzip(sourceFile: string, destinationFolder: string): Promise<Err
         if (!fs.existsSync(destinationFolder)) {
             mkdirp.sync(destinationFolder);
         }
-        await extract(sourceFile, { dir: destinationFolder });
+        await extractZip(sourceFile, destinationFolder);
         return ok(null);
     } catch (e) {
         console.log(e);
         return err("zip extract failed");
     }
+}
+
+// yauzl is used instead of extract-zip, which has an unpatched symlink path-traversal
+// vulnerability (GHSA-jmr9-qjv8-65gv, GHSA-7pqw-9j4j-h8q3). Every entry is written as a
+// plain file or directory strictly inside destinationFolder; no symlinks are ever created,
+// which also closes off that vulnerability class.
+function extractZip(sourceFile: string, destinationFolder: string): Promise<void> {
+    const destinationRoot = path.resolve(destinationFolder);
+    return new Promise((resolve, reject) => {
+        yauzl.open(sourceFile, { lazyEntries: true }, (openErr, zipfile) => {
+            if (openErr || !zipfile) {
+                return reject(openErr ?? new Error("Failed to open zip file"));
+            }
+            zipfile.on('error', reject);
+            zipfile.readEntry();
+            zipfile.on('entry', (entry: yauzl.Entry) => {
+                const entryPath = path.resolve(destinationRoot, entry.fileName);
+                if (entryPath !== destinationRoot && !entryPath.startsWith(destinationRoot + path.sep)) {
+                    return reject(new Error(`Zip entry path escapes destination: ${entry.fileName}`));
+                }
+                if (/[/\\]$/.test(entry.fileName)) {
+                    mkdirp.sync(entryPath);
+                    zipfile.readEntry();
+                    return;
+                }
+                mkdirp.sync(path.dirname(entryPath));
+                zipfile.openReadStream(entry, (readErr, readStream) => {
+                    if (readErr || !readStream) {
+                        return reject(readErr ?? new Error("Failed to read zip entry"));
+                    }
+                    const writeStream = fs.createWriteStream(entryPath);
+                    readStream.on('error', reject);
+                    writeStream.on('error', reject);
+                    writeStream.on('finish', () => zipfile.readEntry());
+                    readStream.pipe(writeStream);
+                });
+            });
+            zipfile.on('end', () => resolve());
+        });
+    });
 }
 
 async function getLatestReleases(): Promise<string> {
